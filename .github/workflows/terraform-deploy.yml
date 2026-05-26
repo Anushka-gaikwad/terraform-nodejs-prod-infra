@@ -77,8 +77,6 @@ jobs:
   deploy-production:
     name: "Deploy Production"
     runs-on: ubuntu-latest
-    deploy-production:
-    needs: []
     if: github.event_name == 'push'
     environment: production
     env:
