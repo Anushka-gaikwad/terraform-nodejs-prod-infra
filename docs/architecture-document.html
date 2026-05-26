@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Production-Ready Node.js on AWS - Architecture Document</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; color: #1a1a2e; background: #fff; line-height: 1.6; }
+
+  .page { max-width: 1100px; margin: 0 auto; padding: 40px 50px; }
+  @media print { .page { page-break-after: always; padding: 30px 40px; } .page:last-child { page-break-after: avoid; } }
+
+  /* Header */
+  .header { background: linear-gradient(135deg, #232f3e 0%, #37475a 100%); color: #fff; padding: 50px; border-radius: 12px; margin-bottom: 40px; }
+  .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .header .subtitle { font-size: 16px; color: #ff9900; font-weight: 500; }
+  .header .meta { margin-top: 20px; font-size: 13px; color: #adb5bd; display: flex; gap: 30px; }
+  .header .meta span { display: flex; align-items: center; gap: 6px; }
+
+  /* Sections */
+  h2 { font-size: 22px; font-weight: 700; color: #232f3e; margin: 35px 0 15px; padding-bottom: 8px; border-bottom: 3px solid #ff9900; display: inline-block; }
+  h3 { font-size: 16px; font-weight: 600; color: #37475a; margin: 20px 0 10px; }
+  p { font-size: 14px; color: #495057; margin-bottom: 12px; }
+
+  /* Info Boxes */
+  .info-box { padding: 16px 20px; border-radius: 8px; margin: 15px 0; font-size: 13px; }
+  .info-box.blue { background: #e8f4fd; border-left: 4px solid #147eba; color: #0a4d76; }
+  .info-box.orange { background: #fff3e0; border-left: 4px solid #ff9900; color: #7a4a00; }
+  .info-box.green { background: #e8f5e9; border-left: 4px solid #1b8a2d; color: #1b5e20; }
+  .info-box.red { background: #fde8e8; border-left: 4px solid #d13212; color: #7a1b0c; }
+  .info-box strong { display: block; margin-bottom: 4px; font-size: 14px; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 13px; }
+  th { background: #232f3e; color: #fff; padding: 10px 14px; text-align: left; font-weight: 600; }
+  td { padding: 10px 14px; border-bottom: 1px solid #e9ecef; }
+  tr:nth-child(even) { background: #f8f9fa; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge.compute { background: #147eba; color: #fff; }
+  .badge.network { background: #ff9900; color: #fff; }
+  .badge.security { background: #d13212; color: #fff; }
+  .badge.monitoring { background: #1b8a2d; color: #fff; }
+  .badge.storage { background: #3b48cc; color: #fff; }
+
+  /* SVG Container */
+  .diagram { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 10px; padding: 20px; margin: 20px 0; text-align: center; overflow-x: auto; }
+  .diagram-title { font-size: 13px; font-weight: 600; color: #6c757d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; }
+
+  /* Tag list */
+  .tag-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .tag { background: #e9ecef; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; color: #495057; }
+
+  ul { margin: 10px 0 10px 20px; font-size: 14px; color: #495057; }
+  li { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<!-- ==================== PAGE 1: COVER + OVERVIEW ==================== -->
+<div class="page">
+  <div class="header">
+    <h1>Production-Ready Node.js Deployment on AWS</h1>
+    <div class="subtitle">Auto Scaling &bull; Networking &bull; WAF &bull; Logging &bull; Monitoring</div>
+    <div class="meta">
+      <span>Project: nodejs-app</span>
+      <span>Environment: Production</span>
+      <span>Region: ap-south-1 (Mumbai)</span>
+      <span>Date: May 2026</span>
+    </div>
+  </div>
+
+  <h2>1. Architecture Overview</h2>
+  <p>This document outlines the production-grade infrastructure for hosting a Node.js REST API on AWS EC2. The architecture is designed for high availability, auto scaling, security hardening, and full observability using Terraform IaC.</p>
+
+  <div class="info-box blue">
+    <strong>Design Principles</strong>
+    Multi-AZ deployment for fault tolerance &bull; Zero-downtime rolling deployments &bull; Least-privilege security &bull; Centralized logging &bull; Infrastructure as Code (no manual console clicks)
+  </div>
+
+  <!-- ARCHITECTURE OVERVIEW DIAGRAM -->
+  <div class="diagram">
+    <div class="diagram-title">High-Level Architecture</div>
+    <svg viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif" width="100%" height="auto">
+      <!-- Background -->
+      <rect x="0" y="0" width="900" height="520" fill="#f8f9fa" rx="10"/>
+
+      <!-- Internet -->
+      <rect x="370" y="10" width="160" height="40" rx="20" fill="#232f3e" stroke="#ff9900" stroke-width="2"/>
+      <text x="450" y="35" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">Internet</text>
+
+      <!-- Arrow: Internet -> WAF -->
+      <line x1="450" y1="50" x2="450" y2="75" stroke="#ff9900" stroke-width="2" marker-end="url(#arrow-orange)"/>
+
+      <!-- WAF -->
+      <rect x="340" y="75" width="220" height="40" rx="8" fill="#d13212" opacity="0.9"/>
+      <text x="450" y="100" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">AWS WAF (WebACL)</text>
+
+      <!-- Arrow: WAF -> ALB -->
+      <line x1="450" y1="115" x2="450" y2="145" stroke="#d13212" stroke-width="2" marker-end="url(#arrow-red)"/>
+
+      <!-- VPC Box -->
+      <rect x="40" y="140" width="820" height="360" rx="10" fill="none" stroke="#ff9900" stroke-width="2" stroke-dasharray="8,4"/>
+      <text x="60" y="165" fill="#ff9900" font-size="13" font-weight="700">VPC 10.0.0.0/16</text>
+
+      <!-- Public Subnets -->
+      <rect x="60" y="175" width="780" height="80" rx="8" fill="#fff3e0" opacity="0.6"/>
+      <text x="80" y="195" fill="#e65100" font-size="11" font-weight="600">Public Subnets (10.0.1.0/24, 10.0.2.0/24)</text>
+
+      <!-- ALB -->
+      <rect x="300" y="205" width="300" height="40" rx="8" fill="#147eba"/>
+      <text x="450" y="230" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">Application Load Balancer (HTTPS:443)</text>
+
+      <!-- NAT GW 1 -->
+      <rect x="70" y="208" width="100" height="32" rx="6" fill="#ff9900"/>
+      <text x="120" y="228" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">NAT GW (AZ-a)</text>
+
+      <!-- NAT GW 2 -->
+      <rect x="730" y="208" width="100" height="32" rx="6" fill="#ff9900"/>
+      <text x="780" y="228" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">NAT GW (AZ-b)</text>
+
+      <!-- Arrow: ALB -> Private -->
+      <line x1="450" y1="245" x2="450" y2="280" stroke="#147eba" stroke-width="2" marker-end="url(#arrow-blue)"/>
+
+      <!-- Private Subnets -->
+      <rect x="60" y="280" width="780" height="90" rx="8" fill="#e8f4fd" opacity="0.5"/>
+      <text x="80" y="300" fill="#0a4d76" font-size="11" font-weight="600">Private Subnets (10.0.11.0/24, 10.0.12.0/24)</text>
+
+      <!-- ASG -->
+      <rect x="140" y="310" width="620" height="50" rx="8" fill="none" stroke="#147eba" stroke-width="2" stroke-dasharray="5,3"/>
+      <text x="170" y="330" fill="#147eba" font-size="11" font-weight="600">Auto Scaling Group (min:2, max:6)</text>
+
+      <!-- EC2 Instance 1 -->
+      <rect x="300" y="318" width="120" height="34" rx="6" fill="#147eba"/>
+      <text x="360" y="340" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">EC2 (AZ-a)</text>
+
+      <!-- EC2 Instance 2 -->
+      <rect x="480" y="318" width="120" height="34" rx="6" fill="#147eba"/>
+      <text x="540" y="340" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">EC2 (AZ-b)</text>
+
+      <!-- Arrow: Private -> Isolated -->
+      <line x1="450" y1="370" x2="450" y2="400" stroke="#6c757d" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-gray)"/>
+
+      <!-- Isolated Subnets -->
+      <rect x="60" y="400" width="780" height="55" rx="8" fill="#f3e5f5" opacity="0.4"/>
+      <text x="80" y="420" fill="#6a1b9a" font-size="11" font-weight="600">Isolated Subnets (10.0.21.0/24, 10.0.22.0/24)</text>
+
+      <!-- DB placeholder -->
+      <rect x="350" y="425" width="200" height="25" rx="6" fill="#6a1b9a" opacity="0.7"/>
+      <text x="450" y="442" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Database Tier (Future)</text>
+
+      <!-- Side services -->
+      <!-- CloudWatch -->
+      <rect x="700" y="310" width="140" height="50" rx="8" fill="#1b8a2d"/>
+      <text x="770" y="332" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">CloudWatch</text>
+      <text x="770" y="348" text-anchor="middle" fill="#dcedc8" font-size="9">Logs + Metrics + Alarms</text>
+
+      <!-- Arrow markers -->
+      <defs>
+        <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ff9900"/></marker>
+        <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#d13212"/></marker>
+        <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#147eba"/></marker>
+        <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6c757d"/></marker>
+        <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1b8a2d"/></marker>
+      </defs>
+    </svg>
+  </div>
+
+  <table>
+    <tr><th>Component</th><th>Service</th><th>Purpose</th></tr>
+    <tr><td><span class="badge network">Networking</span></td><td>VPC, Subnets, NAT, IGW</td><td>Multi-tier network isolation across 2 AZs</td></tr>
+    <tr><td><span class="badge compute">Compute</span></td><td>EC2 + ASG + Launch Template</td><td>Auto-scaled Node.js app with rolling updates</td></tr>
+    <tr><td><span class="badge compute">Load Balancer</span></td><td>ALB + ACM</td><td>HTTPS termination, health checks, traffic distribution</td></tr>
+    <tr><td><span class="badge security">Security</span></td><td>WAF, SGs, NACLs, KMS, IAM</td><td>Defense in depth, encryption, least privilege</td></tr>
+    <tr><td><span class="badge monitoring">Monitoring</span></td><td>CloudWatch, CloudTrail</td><td>Logs, metrics, alarms, audit trail</td></tr>
+    <tr><td><span class="badge storage">IaC</span></td><td>Terraform (6 modules)</td><td>Fully automated, repeatable infrastructure</td></tr>
+  </table>
+</div>
+
+<!-- ==================== PAGE 2: NETWORKING + SECURITY ==================== -->
+<div class="page">
+  <h2>2. Networking & VPC Design</h2>
+
+  <div class="diagram">
+    <div class="diagram-title">VPC Network Layout</div>
+    <svg viewBox="0 0 800 340" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif" width="100%" height="auto">
+      <rect x="0" y="0" width="800" height="340" fill="#f8f9fa" rx="8"/>
+
+      <!-- VPC -->
+      <rect x="20" y="15" width="760" height="310" rx="8" fill="none" stroke="#ff9900" stroke-width="2"/>
+      <text x="40" y="38" fill="#ff9900" font-size="13" font-weight="700">VPC: 10.0.0.0/16</text>
+
+      <!-- AZ-a -->
+      <rect x="40" y="50" width="350" height="260" rx="6" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
+      <text x="215" y="70" text-anchor="middle" fill="#666" font-size="12" font-weight="600">Availability Zone: ap-south-1a</text>
+
+      <!-- AZ-b -->
+      <rect x="410" y="50" width="350" height="260" rx="6" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
+      <text x="585" y="70" text-anchor="middle" fill="#666" font-size="12" font-weight="600">Availability Zone: ap-south-1b</text>
+
+      <!-- Public AZ-a -->
+      <rect x="55" y="80" width="320" height="55" rx="6" fill="#ff9900" opacity="0.15" stroke="#ff9900" stroke-width="1"/>
+      <text x="65" y="98" fill="#e65100" font-size="10" font-weight="600">Public: 10.0.1.0/24</text>
+      <rect x="65" y="105" width="80" height="22" rx="4" fill="#ff9900"/><text x="105" y="120" text-anchor="middle" fill="#fff" font-size="9" font-weight="600">NAT GW</text>
+      <rect x="155" y="105" width="60" height="22" rx="4" fill="#147eba"/><text x="185" y="120" text-anchor="middle" fill="#fff" font-size="9" font-weight="600">ALB</text>
+
+      <!-- Public AZ-b -->
+      <rect x="425" y="80" width="320" height="55" rx="6" fill="#ff9900" opacity="0.15" stroke="#ff9900" stroke-width="1"/>
+      <text x="435" y="98" fill="#e65100" font-size="10" font-weight="600">Public: 10.0.2.0/24</text>
+      <rect x="435" y="105" width="80" height="22" rx="4" fill="#ff9900"/><text x="475" y="120" text-anchor="middle" fill="#fff" font-size="9" font-weight="600">NAT GW</text>
+      <rect x="525" y="105" width="60" height="22" rx="4" fill="#147eba"/><text x="555" y="120" text-anchor="middle" fill="#fff" font-size="9" font-weight="600">ALB</text>
+
+      <!-- Private AZ-a -->
+      <rect x="55" y="145" width="320" height="55" rx="6" fill="#147eba" opacity="0.1" stroke="#147eba" stroke-width="1"/>
+      <text x="65" y="163" fill="#0a4d76" font-size="10" font-weight="600">Private: 10.0.11.0/24</text>
+      <rect x="120" y="170" width="110" height="22" rx="4" fill="#147eba"/><text x="175" y="185" text-anchor="middle" fill="#fff" font-size="9" font-weight="600">EC2 (Node.js)</text>
+
+      <!-- Private AZ-b -->
+      <rect x="425" y="145" width="320" height="55" rx="6" fill="#147eba" opacity="0.1" stroke="#147eba" stroke-width="1"/>
+      <text x="435" y="163" fill="#0a4d76" font-size="10" font-weight="600">Private: 10.0.12.0/24</text>
+      <rect x="490" y="170" width="110" height="22" rx="4" fill="#147eba"/><text x="545" y="185" text-anchor="middle" fill="#fff" font-size="9" font-weight="600">EC2 (Node.js)</text>
+
+      <!-- Isolated AZ-a -->
+      <rect x="55" y="210" width="320" height="50" rx="6" fill="#6a1b9a" opacity="0.08" stroke="#6a1b9a" stroke-width="1"/>
+      <text x="65" y="228" fill="#6a1b9a" font-size="10" font-weight="600">Isolated: 10.0.21.0/24</text>
+      <rect x="140" y="233" width="90" height="20" rx="4" fill="#6a1b9a" opacity="0.6"/><text x="185" y="247" text-anchor="middle" fill="#fff" font-size="9" font-weight="600">DB (future)</text>
+
+      <!-- Isolated AZ-b -->
+      <rect x="425" y="210" width="320" height="50" rx="6" fill="#6a1b9a" opacity="0.08" stroke="#6a1b9a" stroke-width="1"/>
+      <text x="435" y="228" fill="#6a1b9a" font-size="10" font-weight="600">Isolated: 10.0.22.0/24</text>
+      <rect x="510" y="233" width="90" height="20" rx="4" fill="#6a1b9a" opacity="0.6"/><text x="555" y="247" text-anchor="middle" fill="#fff" font-size="9" font-weight="600">DB (future)</text>
+
+      <!-- Route info -->
+      <text x="65" y="290" fill="#495057" font-size="10">Public RT: 0.0.0.0/0 -> IGW</text>
+      <text x="65" y="305" fill="#495057" font-size="10">Private RT: 0.0.0.0/0 -> NAT GW (per AZ)</text>
+      <text x="435" y="290" fill="#495057" font-size="10">Isolated RT: No internet route</text>
+      <text x="435" y="305" fill="#495057" font-size="10">VPC Flow Logs: ALL -> CloudWatch</text>
+    </svg>
+  </div>
+
+  <h2>3. Security Architecture</h2>
+
+  <div class="diagram">
+    <div class="diagram-title">Defense in Depth</div>
+    <svg viewBox="0 0 800 250" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif" width="100%" height="auto">
+      <rect x="0" y="0" width="800" height="250" fill="#f8f9fa" rx="8"/>
+
+      <!-- Layer 1: WAF -->
+      <rect x="30" y="20" width="740" height="40" rx="8" fill="#d13212" opacity="0.9"/>
+      <text x="400" y="45" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">Layer 1: AWS WAF - Core Rules + SQLi + XSS + Rate Limit (2000/5min/IP)</text>
+
+      <!-- Layer 2: NACLs -->
+      <rect x="60" y="70" width="680" height="35" rx="8" fill="#ff9900" opacity="0.8"/>
+      <text x="400" y="93" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">Layer 2: Network ACLs - Subnet-level stateless filtering</text>
+
+      <!-- Layer 3: Security Groups -->
+      <rect x="90" y="115" width="620" height="35" rx="8" fill="#147eba" opacity="0.85"/>
+      <text x="400" y="138" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">Layer 3: Security Groups - ALB SG -> EC2 SG -> DB SG (least privilege)</text>
+
+      <!-- Layer 4: IAM + Encryption -->
+      <rect x="120" y="160" width="560" height="35" rx="8" fill="#1b8a2d" opacity="0.85"/>
+      <text x="400" y="183" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">Layer 4: IAM Roles (SSM, no SSH) + KMS Encryption (EBS, S3, Logs)</text>
+
+      <!-- Layer 5: App -->
+      <rect x="150" y="205" width="500" height="30" rx="8" fill="#3b48cc"/>
+      <text x="400" y="225" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">Layer 5: Application (IMDSv2, Secrets in SSM, no hardcoded creds)</text>
+    </svg>
+  </div>
+
+  <table>
+    <tr><th>Security Control</th><th>Implementation</th><th>Purpose</th></tr>
+    <tr><td>WAF</td><td>4 rules: Core, Bad Inputs, SQLi, Rate Limit</td><td>Block OWASP top threats at edge</td></tr>
+    <tr><td>NACLs</td><td>Public/Private/Isolated with allow-lists</td><td>Subnet-level defense layer</td></tr>
+    <tr><td>Security Groups</td><td>ALB(80,443) -> EC2(3000) -> DB(5432)</td><td>Instance-level least privilege</td></tr>
+    <tr><td>IAM</td><td>EC2 role with SSM + CloudWatch only</td><td>No SSH, no hardcoded credentials</td></tr>
+    <tr><td>KMS</td><td>CMK with rotation for EBS, S3, Logs</td><td>Encryption at rest everywhere</td></tr>
+    <tr><td>IMDSv2</td><td>HttpTokens=required on Launch Template</td><td>Prevent SSRF metadata attacks</td></tr>
+    <tr><td>VPC Flow Logs</td><td>All traffic -> CloudWatch Logs</td><td>Network traffic auditing</td></tr>
+  </table>
+</div>
+
+<!-- ==================== PAGE 3: COMPUTE + LOAD BALANCING ==================== -->
+<div class="page">
+  <h2>4. Compute & Auto Scaling</h2>
+
+  <div class="diagram">
+    <div class="diagram-title">Auto Scaling & Deployment Flow</div>
+    <svg viewBox="0 0 800 280" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif" width="100%" height="auto">
+      <rect x="0" y="0" width="800" height="280" fill="#f8f9fa" rx="8"/>
+
+      <!-- Launch Template -->
+      <rect x="30" y="30" width="180" height="100" rx="8" fill="#232f3e"/>
+      <text x="120" y="55" text-anchor="middle" fill="#ff9900" font-size="12" font-weight="700">Launch Template</text>
+      <text x="120" y="75" text-anchor="middle" fill="#adb5bd" font-size="10">AMI: Amazon Linux 2023</text>
+      <text x="120" y="90" text-anchor="middle" fill="#adb5bd" font-size="10">Type: t3.medium</text>
+      <text x="120" y="105" text-anchor="middle" fill="#adb5bd" font-size="10">EBS: 20GB gp3 (KMS)</text>
+      <text x="120" y="120" text-anchor="middle" fill="#adb5bd" font-size="10">IMDSv2 required</text>
+
+      <!-- Arrow -->
+      <line x1="210" y1="80" x2="260" y2="80" stroke="#ff9900" stroke-width="2" marker-end="url(#arrow-orange)"/>
+
+      <!-- ASG -->
+      <rect x="260" y="20" width="280" height="120" rx="8" fill="none" stroke="#147eba" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="400" y="42" text-anchor="middle" fill="#147eba" font-size="12" font-weight="700">Auto Scaling Group</text>
+      <text x="400" y="60" text-anchor="middle" fill="#6c757d" font-size="10">Min: 2 | Desired: 2 | Max: 6</text>
+
+      <!-- EC2s inside ASG -->
+      <rect x="280" y="72" width="100" height="55" rx="6" fill="#147eba"/>
+      <text x="330" y="92" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">EC2 (AZ-a)</text>
+      <text x="330" y="107" text-anchor="middle" fill="#b3d9f2" font-size="9">Node.js :3000</text>
+      <text x="330" y="120" text-anchor="middle" fill="#b3d9f2" font-size="9">CW Agent</text>
+
+      <rect x="420" y="72" width="100" height="55" rx="6" fill="#147eba"/>
+      <text x="470" y="92" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">EC2 (AZ-b)</text>
+      <text x="470" y="107" text-anchor="middle" fill="#b3d9f2" font-size="9">Node.js :3000</text>
+      <text x="470" y="120" text-anchor="middle" fill="#b3d9f2" font-size="9">CW Agent</text>
+
+      <!-- Scaling Policies -->
+      <rect x="580" y="20" width="190" height="120" rx="8" fill="#fff" stroke="#1b8a2d" stroke-width="1.5"/>
+      <text x="675" y="42" text-anchor="middle" fill="#1b8a2d" font-size="12" font-weight="700">Scaling Policies</text>
+      <text x="675" y="62" text-anchor="middle" fill="#495057" font-size="10">Target Tracking: CPU 60%</text>
+      <text x="675" y="80" text-anchor="middle" fill="#495057" font-size="10">Request Count / Target</text>
+      <line x1="595" y1="90" x2="755" y2="90" stroke="#e9ecef" stroke-width="1"/>
+      <text x="675" y="108" text-anchor="middle" fill="#495057" font-size="10">Scheduled: Scale up 8AM</text>
+      <text x="675" y="124" text-anchor="middle" fill="#495057" font-size="10">Scheduled: Scale down 8PM</text>
+
+      <!-- Arrow ASG -> Policies -->
+      <line x1="540" y1="80" x2="580" y2="80" stroke="#1b8a2d" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+      <!-- Instance Refresh -->
+      <rect x="260" y="160" width="280" height="50" rx="8" fill="#fff" stroke="#ff9900" stroke-width="1.5"/>
+      <text x="400" y="182" text-anchor="middle" fill="#ff9900" font-size="12" font-weight="700">Instance Refresh (Rolling)</text>
+      <text x="400" y="200" text-anchor="middle" fill="#495057" font-size="10">Min Healthy: 50% | Warmup: 300s | Zero Downtime</text>
+
+      <!-- User Data -->
+      <rect x="260" y="225" width="510" height="45" rx="8" fill="#fff3e0" stroke="#ff9900" stroke-width="1"/>
+      <text x="515" y="245" text-anchor="middle" fill="#7a4a00" font-size="11" font-weight="600">User Data: Install Node.js 20 -> CloudWatch Agent -> CodeDeploy -> Start App via systemd</text>
+      <text x="515" y="260" text-anchor="middle" fill="#7a4a00" font-size="10">SSM Session Manager for access (no SSH port 22)</text>
+    </svg>
+  </div>
+
+  <h2>5. Load Balancing & Traffic Flow</h2>
+
+  <div class="diagram">
+    <div class="diagram-title">Request Flow</div>
+    <svg viewBox="0 0 800 120" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif" width="100%" height="auto">
+      <rect x="0" y="0" width="800" height="120" fill="#f8f9fa" rx="8"/>
+
+      <!-- User -->
+      <rect x="20" y="35" width="90" height="50" rx="25" fill="#232f3e"/>
+      <text x="65" y="65" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">User</text>
+
+      <line x1="110" y1="60" x2="145" y2="60" stroke="#232f3e" stroke-width="2" marker-end="url(#arrow-gray)"/>
+
+      <!-- Route53 -->
+      <rect x="145" y="35" width="100" height="50" rx="8" fill="#ff9900"/>
+      <text x="195" y="57" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">Route 53</text>
+      <text x="195" y="72" text-anchor="middle" fill="#fff" font-size="9">DNS Alias</text>
+
+      <line x1="245" y1="60" x2="280" y2="60" stroke="#ff9900" stroke-width="2" marker-end="url(#arrow-orange)"/>
+
+      <!-- WAF -->
+      <rect x="280" y="35" width="90" height="50" rx="8" fill="#d13212"/>
+      <text x="325" y="57" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">WAF</text>
+      <text x="325" y="72" text-anchor="middle" fill="#fff" font-size="9">Filter</text>
+
+      <line x1="370" y1="60" x2="405" y2="60" stroke="#d13212" stroke-width="2" marker-end="url(#arrow-red)"/>
+
+      <!-- ALB -->
+      <rect x="405" y="25" width="130" height="70" rx="8" fill="#147eba"/>
+      <text x="470" y="50" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">ALB</text>
+      <text x="470" y="65" text-anchor="middle" fill="#b3d9f2" font-size="9">HTTP->HTTPS 301</text>
+      <text x="470" y="80" text-anchor="middle" fill="#b3d9f2" font-size="9">TLS 1.3 (ACM)</text>
+
+      <line x1="535" y1="60" x2="570" y2="45" stroke="#147eba" stroke-width="2" marker-end="url(#arrow-blue)"/>
+      <line x1="535" y1="60" x2="570" y2="75" stroke="#147eba" stroke-width="2" marker-end="url(#arrow-blue)"/>
+
+      <!-- EC2 instances -->
+      <rect x="570" y="20" width="100" height="35" rx="6" fill="#147eba" opacity="0.8"/>
+      <text x="620" y="42" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">EC2 :3000</text>
+
+      <rect x="570" y="65" width="100" height="35" rx="6" fill="#147eba" opacity="0.8"/>
+      <text x="620" y="87" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">EC2 :3000</text>
+
+      <!-- Health Check -->
+      <rect x="695" y="35" width="90" height="50" rx="8" fill="#1b8a2d"/>
+      <text x="740" y="57" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">/health</text>
+      <text x="740" y="72" text-anchor="middle" fill="#dcedc8" font-size="9">200 OK</text>
+
+      <line x1="670" y1="50" x2="695" y2="55" stroke="#1b8a2d" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrow-green)"/>
+    </svg>
+  </div>
+
+  <table>
+    <tr><th>ALB Configuration</th><th>Value</th></tr>
+    <tr><td>Scheme</td><td>Internet-facing (public subnets)</td></tr>
+    <tr><td>HTTPS Listener</td><td>Port 443, TLS 1.3, ACM Certificate</td></tr>
+    <tr><td>HTTP Listener</td><td>Port 80 -> 301 Redirect to HTTPS</td></tr>
+    <tr><td>Target Group</td><td>HTTP:3000, Health: /health, Interval: 30s</td></tr>
+    <tr><td>Access Logs</td><td>S3 bucket with 30d IA transition, 90d expiry</td></tr>
+    <tr><td>Deletion Protection</td><td>Disabled (POC), enable for production</td></tr>
+  </table>
+</div>
+
+<!-- ==================== PAGE 4: MONITORING + IAC ==================== -->
+<div class="page">
+  <h2>6. Logging & Monitoring</h2>
+
+  <div class="diagram">
+    <div class="diagram-title">Observability Stack</div>
+    <svg viewBox="0 0 800 260" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif" width="100%" height="auto">
+      <rect x="0" y="0" width="800" height="260" fill="#f8f9fa" rx="8"/>
+
+      <!-- Sources -->
+      <text x="100" y="25" text-anchor="middle" fill="#6c757d" font-size="12" font-weight="700">LOG SOURCES</text>
+
+      <rect x="20" y="35" width="160" height="35" rx="6" fill="#147eba"/><text x="100" y="57" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">EC2: App Logs</text>
+      <rect x="20" y="80" width="160" height="35" rx="6" fill="#147eba" opacity="0.7"/><text x="100" y="102" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">EC2: System Logs</text>
+      <rect x="20" y="125" width="160" height="35" rx="6" fill="#ff9900"/><text x="100" y="147" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">VPC: Flow Logs</text>
+      <rect x="20" y="170" width="160" height="35" rx="6" fill="#d13212"/><text x="100" y="192" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">WAF: Request Logs</text>
+      <rect x="20" y="215" width="160" height="35" rx="6" fill="#232f3e"/><text x="100" y="237" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">CloudTrail: API Logs</text>
+
+      <!-- Arrows to CW -->
+      <line x1="180" y1="52" x2="280" y2="100" stroke="#147eba" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+      <line x1="180" y1="97" x2="280" y2="100" stroke="#147eba" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+      <line x1="180" y1="142" x2="280" y2="120" stroke="#ff9900" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+      <line x1="180" y1="187" x2="280" y2="140" stroke="#d13212" stroke-width="1.5" marker-end="url(#arrow-red)"/>
+      <line x1="180" y1="232" x2="280" y2="160" stroke="#6c757d" stroke-width="1.5" marker-end="url(#arrow-gray)"/>
+
+      <!-- CloudWatch -->
+      <rect x="280" y="55" width="200" height="130" rx="10" fill="#1b8a2d"/>
+      <text x="380" y="80" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">CloudWatch</text>
+      <text x="380" y="100" text-anchor="middle" fill="#dcedc8" font-size="10">/app/nodejs</text>
+      <text x="380" y="115" text-anchor="middle" fill="#dcedc8" font-size="10">/system/syslog</text>
+      <text x="380" y="130" text-anchor="middle" fill="#dcedc8" font-size="10">/vpc/flowlogs/*</text>
+      <text x="380" y="145" text-anchor="middle" fill="#dcedc8" font-size="10">/aws/cloudtrail/*</text>
+      <text x="380" y="160" text-anchor="middle" fill="#dcedc8" font-size="10">aws-waf-logs-*</text>
+      <text x="380" y="175" text-anchor="middle" fill="#b9f6ca" font-size="9">KMS Encrypted | 30d Retention</text>
+
+      <!-- Arrows to outputs -->
+      <line x1="480" y1="90" x2="540" y2="50" stroke="#1b8a2d" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+      <line x1="480" y1="120" x2="540" y2="120" stroke="#1b8a2d" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+      <line x1="480" y1="150" x2="540" y2="190" stroke="#1b8a2d" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+      <!-- Alarms -->
+      <rect x="540" y="25" width="230" height="65" rx="8" fill="#fff" stroke="#d13212" stroke-width="1.5"/>
+      <text x="655" y="45" text-anchor="middle" fill="#d13212" font-size="11" font-weight="700">Alarms -> SNS (Email)</text>
+      <text x="655" y="60" text-anchor="middle" fill="#495057" font-size="9">CPU > 80% | ALB 5xx > 10/min</text>
+      <text x="655" y="75" text-anchor="middle" fill="#495057" font-size="9">Target 5xx | ASG < min instances</text>
+
+      <!-- Dashboard -->
+      <rect x="540" y="100" width="230" height="50" rx="8" fill="#fff" stroke="#147eba" stroke-width="1.5"/>
+      <text x="655" y="122" text-anchor="middle" fill="#147eba" font-size="11" font-weight="700">CloudWatch Dashboard</text>
+      <text x="655" y="138" text-anchor="middle" fill="#495057" font-size="9">CPU, Network, Requests, Errors, Latency, Hosts</text>
+
+      <!-- CloudTrail S3 -->
+      <rect x="540" y="165" width="230" height="50" rx="8" fill="#fff" stroke="#232f3e" stroke-width="1.5"/>
+      <text x="655" y="187" text-anchor="middle" fill="#232f3e" font-size="11" font-weight="700">CloudTrail -> S3</text>
+      <text x="655" y="203" text-anchor="middle" fill="#495057" font-size="9">Multi-region | Log validation | KMS | 90d lifecycle</text>
+    </svg>
+  </div>
+
+  <h2>7. Infrastructure as Code (Terraform)</h2>
+
+  <div class="diagram">
+    <div class="diagram-title">Terraform Module Architecture</div>
+    <svg viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif" width="100%" height="auto">
+      <rect x="0" y="0" width="800" height="200" fill="#f8f9fa" rx="8"/>
+
+      <!-- Root -->
+      <rect x="280" y="15" width="240" height="45" rx="8" fill="#232f3e"/>
+      <text x="400" y="35" text-anchor="middle" fill="#ff9900" font-size="13" font-weight="700">Root Module (main.tf)</text>
+      <text x="400" y="50" text-anchor="middle" fill="#adb5bd" font-size="10">environments/staging.tfvars | production.tfvars</text>
+
+      <!-- Lines down to modules -->
+      <line x1="200" y1="60" x2="200" y2="90" stroke="#6c757d" stroke-width="1.5"/>
+      <line x1="330" y1="60" x2="330" y2="90" stroke="#6c757d" stroke-width="1.5"/>
+      <line x1="400" y1="60" x2="400" y2="90" stroke="#6c757d" stroke-width="1.5"/>
+      <line x1="470" y1="60" x2="470" y2="90" stroke="#6c757d" stroke-width="1.5"/>
+      <line x1="600" y1="60" x2="600" y2="90" stroke="#6c757d" stroke-width="1.5"/>
+      <line x1="700" y1="60" x2="700" y2="90" stroke="#6c757d" stroke-width="1.5"/>
+      <line x1="200" y1="60" x2="700" y2="60" stroke="#6c757d" stroke-width="1.5"/>
+
+      <!-- Modules -->
+      <rect x="140" y="90" width="120" height="55" rx="8" fill="#ff9900"/><text x="200" y="113" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">vpc/</text><text x="200" y="130" text-anchor="middle" fill="#fff" font-size="8">VPC, Subnets, NAT</text><text x="200" y="140" text-anchor="middle" fill="#fff" font-size="8">NACLs, Flow Logs</text>
+
+      <rect x="270" y="90" width="120" height="55" rx="8" fill="#d13212"/><text x="330" y="113" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">security/</text><text x="330" y="130" text-anchor="middle" fill="#fff" font-size="8">SGs, IAM, KMS</text><text x="330" y="140" text-anchor="middle" fill="#fff" font-size="8">SSM Parameters</text>
+
+      <rect x="340" y="155" width="120" height="35" rx="8" fill="#147eba"/><text x="400" y="177" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">alb/</text>
+
+      <rect x="410" y="90" width="120" height="55" rx="8" fill="#147eba"/><text x="470" y="113" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">compute/</text><text x="470" y="130" text-anchor="middle" fill="#fff" font-size="8">LT, ASG, Scaling</text><text x="470" y="140" text-anchor="middle" fill="#fff" font-size="8">User Data</text>
+
+      <rect x="540" y="90" width="120" height="55" rx="8" fill="#d13212" opacity="0.85"/><text x="600" y="113" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">waf/</text><text x="600" y="130" text-anchor="middle" fill="#fff" font-size="8">WebACL, Rules</text><text x="600" y="140" text-anchor="middle" fill="#fff" font-size="8">Rate Limiting</text>
+
+      <rect x="640" y="90" width="120" height="55" rx="8" fill="#1b8a2d"/><text x="700" y="113" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">monitoring/</text><text x="700" y="130" text-anchor="middle" fill="#fff" font-size="8">Logs, Alarms</text><text x="700" y="140" text-anchor="middle" fill="#fff" font-size="8">Dashboard, Trail</text>
+
+      <!-- Resource count -->
+      <text x="400" y="195" text-anchor="middle" fill="#6c757d" font-size="11" font-weight="600">Total: 101 resources managed | Terraform >= 1.5 | AWS Provider ~> 5.0</text>
+    </svg>
+  </div>
+
+  <div class="info-box green">
+    <strong>Key Decisions & Trade-offs</strong>
+    <ul style="margin:8px 0 0 16px; font-size:13px;">
+      <li><b>NAT Gateway per AZ</b> instead of single NAT — higher cost but eliminates cross-AZ single point of failure</li>
+      <li><b>SSM Session Manager</b> instead of SSH — no port 22 exposed, auditable sessions, no key management</li>
+      <li><b>Instance Refresh</b> for deployments — zero-downtime rolling updates without external CI/CD dependency</li>
+      <li><b>KMS CMK</b> instead of AWS-managed keys — centralized key management, rotation, and audit via CloudTrail</li>
+      <li><b>Separate tfvars per environment</b> — same modules for staging/production, only config differs</li>
+    </ul>
+  </div>
+
+  <div class="info-box orange">
+    <strong>Resource Tags (applied to all resources)</strong>
+    <div class="tag-list" style="margin-top:8px;">
+      <span class="tag">Environment: production</span>
+      <span class="tag">Project: nodejs-app</span>
+      <span class="tag">Owner: devops-team</span>
+      <span class="tag">CostCenter: engineering</span>
+      <span class="tag">ManagedBy: terraform</span>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
