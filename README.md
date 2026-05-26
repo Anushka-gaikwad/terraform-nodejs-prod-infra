@@ -1,72 +1,189 @@
-# Production-Ready Node.js Infrastructure on AWS
+# Production-Grade Node.js Infrastructure on AWS (Terraform)
 
-Terraform IaC for deploying a scalable, secure Node.js REST API on EC2 with enterprise production standards.
+This repository contains Infrastructure as Code (Terraform) to deploy a secure, scalable, and production-ready Node.js REST API on AWS using EC2 Auto Scaling, ALB, WAF, Route 53, ACM, and CloudWatch.
 
-## Architecture
+The goal is to implement real-world AWS production architecture principles: high availability, security, observability, and zero-downtime deployments.
 
-```
-Internet → WAF → ALB (public subnets) → EC2 ASG (private subnets) → DB (isolated subnets)
-                                              ↓
-                                     NAT Gateway → Internet (egress only)
-```
+---
 
-**Key components:**
-- **VPC**: Custom /16 VPC across 2 AZs with public, private, and isolated subnets
-- **ALB**: Application Load Balancer with HTTPS (ACM), HTTP→HTTPS redirect, access logs to S3
-- **ASG**: Auto Scaling Group with launch template, target tracking (CPU 60%), scheduled scaling, instance refresh for zero-downtime deploys
-- **WAF**: AWS WAF with Core Rule Set, SQL injection, XSS, and rate-limiting (2000 req/5min/IP)
-- **Security**: Least-privilege SGs, IAM instance profile, KMS encryption, SSM Session Manager (no SSH), IMDSv2 enforced
-- **Monitoring**: CloudWatch agent, log groups (/app/nodejs, /system/syslog), alarms (CPU, 5xx, ASG health), operational dashboard
-- **CloudTrail**: Multi-region trail with S3 storage and log file validation
-- **VPC Flow Logs**: Network traffic auditing to CloudWatch Logs
+## 🌐 End-to-End Architecture Flow
+User
+↓
+Route 53 (DNS)
+↓
+AWS WAF (Security Filtering)
+↓
+Application Load Balancer (HTTPS via ACM)
+↓
+Target Group
+↓
+EC2 Auto Scaling Group (Private Subnets)
+↓
+Node.js Application
+↓
+CloudWatch Logs + Metrics + CloudTrail
 
-## Module Structure
 
-```
-modules/
-├── vpc/         # VPC, subnets, IGW, NAT, route tables, NACLs, flow logs
-├── security/    # Security groups, IAM roles, KMS, SSM parameters
-├── alb/         # ALB, target group, HTTPS listener, access logs S3 bucket
-├── compute/     # Launch template, ASG, scaling policies, CloudWatch agent config
-├── waf/         # WAF WebACL, managed rules, rate limiting
-└── monitoring/  # CloudWatch log groups, alarms, dashboard, CloudTrail
-```
+---
 
-## Usage
+## 🧠 System Design Summary
 
+- Fully multi-AZ architecture
+- No direct EC2 exposure to internet
+- All traffic encrypted via HTTPS (ACM)
+- Auto Scaling based on CPU utilization
+- Centralized logging + monitoring
+- DNS-based access via Route 53
+- Secure-by-default network segmentation
+
+---
+
+## 🌍 Networking & VPC Design
+
+### VPC
+- Custom VPC with `/16 CIDR`
+- Multi-AZ (minimum 2 Availability Zones)
+
+### Subnets
+- Public Subnets:
+  - ALB
+  - NAT Gateway
+- Private Subnets:
+  - EC2 Auto Scaling Group
+- (Optional) Isolated Subnets:
+  - Database layer
+
+### Routing
+- Internet Gateway → Public Subnets
+- NAT Gateway → Private Subnets (outbound only)
+
+### DNS (Route 53)
+- Hosted Zone managed in Route 53
+- Domain maps to ALB using Alias record:
+
+anushka-prod.com → ALB DNS
+
+
+This is the **real production entry point** for users.
+
+---
+
+## 🔐 Security & SSL (ACM + WAF)
+
+### AWS Certificate Manager (ACM)
+- TLS certificate attached to ALB
+- Enables HTTPS (port 443)
+- HTTP → HTTPS redirect enforced
+
+### AWS WAF
+- Attached to ALB
+- Protection rules:
+  - SQL Injection protection
+  - XSS protection
+  - Rate limiting (2000 req / 5 min / IP)
+
+### IAM & Secrets
+- EC2 uses IAM Instance Profile (no hardcoded credentials)
+- Secrets stored in SSM Parameter Store / Secrets Manager
+
+### Network Security
+- No SSH access (SSM Session Manager only)
+- Security Groups follow least privilege
+
+---
+
+## ⚙️ Compute Layer (EC2 + ASG)
+
+### Launch Template
+- Amazon Linux 2023 AMI
+- Node.js installed via user data
+- IAM role attached
+- EBS encryption enabled
+
+### Auto Scaling Group
+- Multi-AZ deployment
+- Min / Desired / Max capacity defined
+- CPU-based scaling (target 60%)
+- Instance Refresh for zero-downtime deployments
+
+### Health Checks
+- ALB health checks control instance lifecycle
+- Unhealthy instances automatically replaced
+
+---
+
+## ⚖️ Load Balancer (ALB)
+
+- Internet-facing Application Load Balancer
+- HTTPS listener (443 only)
+- Target group connected to ASG
+- HTTP → HTTPS redirect enabled
+- Access logs stored in S3 bucket
+
+---
+
+## 🛡️ Security Architecture
+
+- AWS WAF on ALB
+- KMS encryption for:
+  - EBS volumes
+  - S3 buckets
+  - CloudWatch logs
+- VPC Flow Logs enabled for traffic auditing
+- No public EC2 access
+
+---
+
+## 📊 Monitoring & Observability
+
+### CloudWatch
+- Log Groups:
+  - /app/nodejs
+  - /system/syslog
+  - /aws/alb/access-logs
+
+### Metrics
+- CPU utilization
+- Request count
+- 4xx / 5xx errors
+
+### Alarms
+- CPU > 80%
+- ALB 5xx spike alerts
+- ASG unhealthy instance count
+
+### Dashboard
+- Real-time infrastructure visibility
+
+### CloudTrail
+- Enabled for all regions
+- Logs stored in S3 with integrity validation
+
+---
+
+## 🚀 Deployment (Terraform)
+
+### Initialize
 ```bash
-# Initialize
 terraform init
 
-# Plan for staging
 terraform plan -var-file=environments/staging.tfvars
-
-# Plan for production
 terraform plan -var-file=environments/production.tfvars
 
-# Apply
 terraform apply -var-file=environments/production.tfvars
-```
 
-Or use the Makefile:
-```bash
+# makefile (optinal)
 make plan ENV=staging
-make apply ENV=staging
-```
+make apply ENV=production
+ 
+## Repository structure 
 
-## Prerequisites
-
-1. AWS CLI configured with appropriate credentials
-2. Terraform >= 1.5.0
-3. An ACM certificate ARN for HTTPS
-4. An AMI ID (Amazon Linux 2023 recommended)
-
-## Required Variables
-
-| Variable | Description |
-|---|---|
-| `environment` | Environment name (staging/production) |
-| `ami_id` | Amazon Linux 2023 AMI ID |
-| `acm_certificate_arn` | ACM certificate ARN for HTTPS |
-
-Update `environments/production.tfvars` and `environments/staging.tfvars` with actual values before deploying.
+modules/
+├── vpc/         # Networking (VPC, subnets, NAT, routes)
+├── alb/         # Load balancer + HTTPS + logs
+├── route53/     # DNS records (domain → ALB)
+├── acm/         # SSL certificate management
+├── security/    # IAM, SGs, KMS, SSM
+├── compute/     # EC2 Launch Template + ASG
+├── waf/         # Web Application Firewall rules
+└── monitoring/  # CloudWatch, alarms, dashboards, CloudTrail
